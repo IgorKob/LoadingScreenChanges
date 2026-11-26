@@ -1,0 +1,10 @@
+﻿__pycache__/
+*.pyc
+*.spec
+build/
+dist/
+settings.json
+logs/
+backups/
+custom_images/
+export/

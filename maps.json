@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "note": "Каталог карт классического режима 7x7. Можно дополнять вручную.",
+  "maps": [
+    {
+      "code": "cybermap",
+      "name": "Стадион",
+      "variants": [
+        "cybermap"
+      ]
+    },
+    {
+      "code": "lumber",
+      "name": "Альпенштадт",
+      "variants": [
+        "lumber",
+        "lumber_01"
+      ]
+    },
+    {
+      "code": "karelia",
+      "name": "Балтийский щит",
+      "variants": [
+        "karelia"
+      ]
+    },
+    {
+      "code": "italy",
+      "name": "Виноградники",
+      "variants": [
+        "italy"
+      ]
+    },
+    {
+      "code": "milbase",
+      "name": "Восточная гавань",
+      "variants": [
+        "milbase",
+        "milbase_02",
+        "milbase_03",
+        "milbase_04",
+        "milbase_05"
+      ]
+    },
+    {
+      "code": "savanna",
+      "name": "Горящие пески",
+      "variants": [
+        "savanna"
+      ]
+    },
+    {
+      "code": "rock",
+      "name": "Древние пирамиды",
+      "variants": [
+        "rock"
+      ]
+    },
+    {
+      "code": "grossberg",
+      "name": "Жемчужный город",
+      "variants": [
+        "grossberg"
+      ]
+    },
+    {
+      "code": "malinovka",
+      "name": "Зимняя Малиновка",
+      "variants": [
+        "malinovka"
+      ]
+    },
+    {
+      "code": "mountain",
+      "name": "Золотая долина",
+      "variants": [
+        "mountain"
+      ]
+    },
+    {
+      "code": "canal",
+      "name": "Канал",
+      "variants": [
+        "canal",
+        "canal_01"
+      ]
+    },
+    {
+      "code": "canyon",
+      "name": "Каньон",
+      "variants": [
+        "canyon"
+      ]
+    },
+    {
+      "code": "karieri",
+      "name": "Карьеры",
+      "variants": [
+        "karieri"
+      ]
+    },
+    {
+      "code": "pliego",
+      "name": "Кастилья",
+      "variants": [
+        "pliego"
+      ]
+    },
+    {
+      "code": "lagoon",
+      "name": "Лагуна",
+      "variants": [
+        "lagoon"
+      ]
+    },
+    {
+      "code": "glacier",
+      "name": "Ледники",
+      "variants": [
+        "glacier",
+        "glacier_02",
+        "glacier_03"
+      ]
+    },
+    {
+      "code": "erlenberg",
+      "name": "Миддлбург",
+      "variants": [
+        "erlenberg",
+        "erlenberg_01",
+        "erlenberg_02"
+      ]
+    },
+    {
+      "code": "holland",
+      "name": "Молендейк",
+      "variants": [
+        "holland"
+      ]
+    },
+    {
+      "code": "skit",
+      "name": "Морской рубеж",
+      "variants": [
+        "skit"
+      ]
+    },
+    {
+      "code": "neptune",
+      "name": "Нормандия",
+      "variants": [
+        "neptune",
+        "neptune_01",
+        "neptune_02"
+      ]
+    },
+    {
+      "code": "forgecity",
+      "name": "Нью-Бэй",
+      "variants": [
+        "forgecity"
+      ]
+    },
+    {
+      "code": "port",
+      "name": "Порт",
+      "variants": [
+        "port"
+      ]
+    },
+    {
+      "code": "plant",
+      "name": "Промзона",
+      "variants": [
+        "plant"
+      ]
+    },
+    {
+      "code": "amigosville",
+      "name": "Протока",
+      "variants": [
+        "amigosville",
+        "amigosville_02",
+        "amigosville_03"
+      ]
+    },
+    {
+      "code": "rudniki",
+      "name": "Рудники",
+      "variants": [
+        "rudniki",
+        "rudniki_01",
+        "rudniki_02",
+        "rudniki_03"
+      ]
+    },
+    {
+      "code": "faust",
+      "name": "Фауст",
+      "variants": [
+        "faust"
+      ]
+    },
+    {
+      "code": "fort",
+      "name": "Форт",
+      "variants": [
+        "fort"
+      ]
+    },
+    {
+      "code": "himmelsdorf",
+      "name": "Химмельсдорф",
+      "variants": [
+        "himmelsdorf",
+        "himmelsdorf_02",
+        "himmelsdorf_03",
+        "himmelsdorf_04"
+      ]
+    },
+    {
+      "code": "rift",
+      "name": "Эллада",
+      "variants": [
+        "rift"
+      ]
+    },
+    {
+      "code": "desert_train",
+      "name": "Эль-Аламейн",
+      "variants": [
+        "desert_train",
+        "desert_train_02",
+        "desert_train_03"
+      ]
+    },
+    {
+      "code": "medvedkovo",
+      "name": "Эшелон",
+      "variants": [
+        "medvedkovo",
+        "medvedkovo_02",
+        "medvedkovo_03"
+      ]
+    },
+    {
+      "code": "idle",
+      "name": "Юкон",
+      "variants": [
+        "idle"
+      ]
+    },
+    {
+      "code": "mars",
+      "name": "ПЭПТ",
+      "variants": [
+        "mars",
+        "mars_02",
+        "mars_03"
+      ]
+    }
+  ]
+}
