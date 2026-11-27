@@ -8,8 +8,8 @@ import sys
 import time
 from pathlib import Path
 
-APP_NAME = "Blitz Loading Changer"
-APP_VERSION = "0.3"
+APP_NAME = "BlitzCustom"
+APP_VERSION = "0.4"
 LOG = logging.getLogger("blitz")
 
 _data_dir_cache: Path | None = None
@@ -20,6 +20,23 @@ def app_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     return Path(__file__).resolve().parent
+
+
+def assets_dir() -> Path:
+    """Папка с картинками интерфейса.
+
+    В собранном onefile-EXE ресурсы лежат во временной папке распаковки,
+    а рядом с exe их может не быть — проверяем оба места.
+    """
+    if getattr(sys, "frozen", False):
+        near = Path(sys.executable).resolve().parent / "assets"
+        if near.is_dir():
+            return near
+        bundled = getattr(sys, "_MEIPASS", None)
+        if bundled:
+            return Path(bundled) / "assets"
+        return near
+    return Path(__file__).resolve().parent / "assets"
 
 
 def _writable(path: Path) -> bool:
@@ -132,3 +149,14 @@ def human_size(size: int) -> str:
 
 def human_time(ts: float) -> str:
     return time.strftime("%d.%m.%Y %H:%M", time.localtime(ts))
+
+
+INVALID_FILENAME_CHARS = '<>:"/\\|?*'
+
+
+def safe_filename(text: str) -> str:
+    """Имя, допустимое в Windows: без : / \\ и прочих запрещённых символов."""
+    cleaned = "".join("_" if ch in INVALID_FILENAME_CHARS or ord(ch) < 32 else ch
+                      for ch in str(text))
+    cleaned = cleaned.strip(" .")
+    return cleaned or "item"

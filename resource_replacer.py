@@ -36,9 +36,21 @@ def is_game_running() -> bool:
         return False
 
 
+def _is_dvpl_file(path: Path) -> bool:
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(-4, 2)
+            return handle.read(4) == b"DVPL"
+    except OSError:
+        return False
+
+
 def _verify_written(path: Path, expected_size: tuple[int, int]) -> None:
     data = path.read_bytes()
-    payload, _ = parse_dvpl(data)
+    if _is_dvpl_file(path):
+        payload, _ = parse_dvpl(data)
+    else:
+        payload = data
     with Image.open(io.BytesIO(payload)) as img:
         if img.size != expected_size:
             raise ApplyError(f"После записи размер изображения {img.size} не совпадает с {expected_size}.")
@@ -65,6 +77,7 @@ def apply_map(map_entry: dict,
 
     files = resource.files
     sizes: dict[tuple[int, int], bytes] = {}
+    file_sizes: dict[str, tuple[int, int]] = {}
     for record in files:
         target_path = Path(record["path"])
         if not target_path.is_file():
@@ -73,6 +86,7 @@ def apply_map(map_entry: dict,
             size = game_image_size(target_path)
         except ImageError as exc:
             raise ApplyError(str(exc)) from exc
+        file_sizes[str(target_path)] = size
         if size not in sizes:
             try:
                 sizes[size], _ = prepare_image_bytes(image_path, size, crop_mode, quality)
@@ -84,11 +98,15 @@ def apply_map(map_entry: dict,
     try:
         for record in files:
             target_path = Path(record["path"])
-            size = game_image_size(target_path)
+            size = file_sizes.get(str(target_path)) or game_image_size(target_path)
             payload = sizes[size]
-            dvpl_bytes = build_dvpl(payload)
-            # Проверяем, что контейнер корректен ещё до записи
-            parse_dvpl(dvpl_bytes)
+            if _is_dvpl_file(target_path):
+                write_bytes = build_dvpl(payload)
+                # проверяем контейнер ещё до записи
+                parse_dvpl(write_bytes)
+            else:
+                # скачанные изображения (фоны профиля) лежат обычным WebP
+                write_bytes = payload
 
             backup_record = None
             original_bytes = None
@@ -105,10 +123,17 @@ def apply_map(map_entry: dict,
             try:
                 probe.write_bytes(b"")
                 probe.unlink()
+            except PermissionError as exc:
+                raise ApplyError(
+                    f"Нет прав на запись в папку:\n{target_path.parent}\n\n"
+                    "Windows блокирует изменение файлов в «Документах». Если включена "
+                    "«Защита от программ-шантажистов» (Controlled Folder Access), "
+                    "разрешите в ней приложение BlitzCustom.exe или запустите программу "
+                    "от имени администратора.") from exc
             except OSError as exc:
                 raise ApplyError(f"Недостаточно прав для изменения файлов игры: {exc}") from exc
 
-            atomic_write_bytes(target_path, dvpl_bytes)
+            atomic_write_bytes(target_path, write_bytes)
             written.append((target_path, original_bytes, backup_record))
             _verify_written(target_path, size)
             result_files.append(str(target_path))

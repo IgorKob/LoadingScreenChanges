@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageOps
 
 from dvpl import DvplError, is_dvpl, read_dvpl
-from utils import LOG
+from utils import LOG, safe_filename
 
 SUPPORTED_EXT = {".png", ".jpg", ".jpeg", ".webp", ".bmp"}
 FORMATS_TEXT = "PNG, JPG/JPEG, WEBP, BMP"
@@ -95,6 +95,15 @@ def prepare_image_bytes(image_path: str | Path,
             if width <= 0 or height <= 0:
                 raise ImageError("Некорректный размер оригинала.")
 
+            # Большие исходники сначала уменьшаем в разы быстрым фильтром:
+            # полноразмерный LANCZOS на 20 Мп занимает секунды.
+            longest = max(width, height)
+            if max(src.size) > longest * 2:
+                ratio = (longest * 2) / max(src.size)
+                src = src.resize(
+                    (max(1, int(src.width * ratio)), max(1, int(src.height * ratio))),
+                    Image.Resampling.BILINEAR)
+
             if crop_mode == "contain":
                 contained = ImageOps.contain(src.convert("RGBA"), (width, height), Image.Resampling.LANCZOS)
                 canvas = Image.new("RGBA", (width, height), (0, 0, 0, 255))
@@ -109,7 +118,7 @@ def prepare_image_bytes(image_path: str | Path,
                                         method=Image.Resampling.LANCZOS)
 
             buffer = io.BytesIO()
-            prepared.save(buffer, format="WEBP", quality=quality, method=6)
+            prepared.save(buffer, format="WEBP", quality=quality, method=4)
             data = buffer.getvalue()
             info = {
                 "source_size": src.size,
@@ -140,9 +149,10 @@ def copy_user_image(source: str | Path, dest_dir: Path, code: str) -> Path:
     ext = source.suffix.lower()
     if ext == ".jpeg":
         ext = ".jpg"
-    dest = dest_dir / f"{code}{ext}"
+    safe_code = safe_filename(code)
+    dest = dest_dir / f"{safe_code}{ext}"
     # Удаляем прежние файлы этого пользователя с другим расширением
-    for old in dest_dir.glob(f"{code}.*"):
+    for old in dest_dir.glob(f"{safe_code}.*"):
         if old != dest:
             try:
                 old.unlink()

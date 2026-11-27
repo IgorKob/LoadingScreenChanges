@@ -6,7 +6,8 @@ import shutil
 import time
 from pathlib import Path
 
-from utils import LOG, atomic_write_bytes, atomic_write_text, human_size, sha256_file
+from utils import (LOG, atomic_write_bytes, atomic_write_text, human_size,
+                   safe_filename, sha256_file)
 
 MANIFEST_NAME = "manifest.json"
 
@@ -78,11 +79,11 @@ class BackupManager:
 
         stamp = time.strftime("%Y%m%d_%H%M%S")
         safe_map = original_path.parent.name
-        backup_name = f"{code}__{safe_map}__{stamp}.dvpl.bak"
+        backup_name = f"{safe_filename(code)}__{safe_map}__{stamp}.dvpl.bak"
         backup_path = self.dir / backup_name
         counter = 1
         while backup_path.exists():
-            backup_path = self.dir / f"{code}__{safe_map}__{stamp}_{counter}.dvpl.bak"
+            backup_path = self.dir / f"{safe_filename(code)}__{safe_map}__{stamp}_{counter}.dvpl.bak"
             counter += 1
 
         try:
