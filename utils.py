@@ -50,6 +50,26 @@ def _writable(path: Path) -> bool:
         return False
 
 
+def _migrate_portable_data(source: Path, target: Path) -> None:
+    """Однократно переносит данные из папки программы в LocalAppData."""
+    try:
+        if (target / "settings.json").exists():
+            return
+        settings_file = source / "settings.json"
+        if not settings_file.is_file():
+            return
+        import shutil
+
+        shutil.copy2(settings_file, target / "settings.json")
+        for name in ("backups", "custom_images", "logs"):
+            folder = source / name
+            if folder.is_dir():
+                shutil.copytree(folder, target / name, dirs_exist_ok=True)
+        LOG.info("Данные перенесены: %s -> %s", source, target)
+    except OSError as exc:
+        LOG.warning("Не удалось перенести данные: %s", exc)
+
+
 def user_data_dir() -> Path:
     """Папка пользовательских данных (изображения, резервные копии, логи, настройки).
 
@@ -68,6 +88,7 @@ def user_data_dir() -> Path:
         target = Path(local) / "BlitzCustom"
         try:
             target.mkdir(parents=True, exist_ok=True)
+            _migrate_portable_data(base, target)
             _data_dir_cache = target
             return target
         except OSError:
