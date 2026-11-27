@@ -53,13 +53,25 @@ def _writable(path: Path) -> bool:
 def user_data_dir() -> Path:
     """Папка пользовательских данных (изображения, резервные копии, логи, настройки).
 
-    По умолчанию — рядом с программой (портативно). Если папка недоступна
-    для записи (например, Program Files), используется %LOCALAPPDATA%.
+    У установленной программы данные лежат в %LOCALAPPDATA%\\BlitzCustom —
+    они переживают удаление приложения и обновления. Если рядом с exe есть файл
+    portable.txt, данные хранятся рядом с программой (портативный режим).
+    При запуске из исходников данные лежат рядом с кодом.
     """
     global _data_dir_cache
     if _data_dir_cache is not None:
         return _data_dir_cache
     base = app_dir()
+    portable = (base / "portable.txt").is_file()
+    if getattr(sys, "frozen", False) and not portable:
+        local = os.environ.get("LOCALAPPDATA") or str(Path.home())
+        target = Path(local) / "BlitzCustom"
+        try:
+            target.mkdir(parents=True, exist_ok=True)
+            _data_dir_cache = target
+            return target
+        except OSError:
+            pass
     if _writable(base):
         _data_dir_cache = base
     else:
