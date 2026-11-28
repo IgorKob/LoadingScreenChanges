@@ -17,6 +17,7 @@ DEFAULTS: dict = {
     "quality": 90,
     "crop_mode": "cover",          # cover | contain | stretch
     "backup_enabled": True,
+    "sounds": True,
     "confirm_apply": True,
     "assignments": {},             # code -> {image, applied, applied_at, files}
     "scan": {},                    # результаты последнего сканирования

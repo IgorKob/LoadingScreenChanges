@@ -9,6 +9,7 @@ python -m PyInstaller --noconfirm --clean --onefile --windowed --uac-admin ^
   --name BlitzCustom ^
   --icon assets\icon.ico ^
   --add-data "assets;assets" ^
+  --add-data "tools;tools" ^
   main.py
 if errorlevel 1 goto error
 echo.

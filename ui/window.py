@@ -13,8 +13,8 @@ import time
 from ctypes import wintypes
 from pathlib import Path
 
-from PySide6.QtCore import (QEvent, QPoint, QPointF, QRect, QRectF, QSize, Qt,
-                            QTimer, Signal)
+from PySide6.QtCore import (QEasingCurve, QEvent, QPoint, QPointF, QPropertyAnimation,
+                            QRect, QRectF, QSize, QSizeF, Qt, QTimer, Property, Signal)
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -24,6 +24,7 @@ from PySide6.QtGui import (
     QLinearGradient,
     QPainter,
     QPainterPath,
+    QPixmap,
     QPen,
     QRadialGradient,
 )
@@ -39,10 +40,11 @@ from PySide6.QtWidgets import (
 
 from utils import LOG
 
-from . import theme
+from . import sounds, theme
 from .animations import DURATION_PAGE, MOTION, fade_in, fade_out
 from .controller import AppController
 from .widgets import (
+    paint_liquid_glass,
     IconButton,
     NavButton,
     Toast,
@@ -320,6 +322,7 @@ NAV_ITEMS = [
     ("elements", "Элементы UI", "grid"),
     ("profile", "Фоны профиля", "spark"),
     ("flags", "Флаги", "shield"),
+    ("camos", "Камуфляжи", "grid"),
     ("other", "Прочие", "image"),
     ("backups", "Резервные копии", "clock"),
     ("settings", "Настройки", "gear"),
@@ -327,13 +330,36 @@ NAV_ITEMS = [
 ]
 
 
+def _add_soft_shadow(widget) -> None:
+    """Мягкая тень под стеклянной панелью (ТЗ: Y 10, blur 20)."""
+    from PySide6.QtWidgets import QGraphicsDropShadowEffect
+    effect = QGraphicsDropShadowEffect(widget)
+    effect.setBlurRadius(20)
+    effect.setOffset(0, 10)
+    effect.setColor(QColor(0, 0, 0, 90))
+    widget.setGraphicsEffect(effect)
+
+
 class Sidebar(QWidget):
+    """Боковая панель с «жидкой» стеклянной подложкой активного пункта.
+
+    По ТЗ подложка не меняет цвет у пункта, а перетекает к нему с небольшим
+    перехлёстом (пружина OutBack), как капля жидкости.
+    """
+
     navigate = Signal(str)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedWidth(226)
         self.buttons: dict[str, NavButton] = {}
+        self._active_key = ""
+        self._pill = QRectF()
+        self._pill_cache = None
+        self._pill_cache_size = QSize()
+        self._morph = QPropertyAnimation(self, b"pill_rect", self)
+        self._morph.setDuration(theme.MORPH_MS)
+        self._morph.setEasingCurve(QEasingCurve.Type.OutBack)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 8, 14, 14)
@@ -341,15 +367,75 @@ class Sidebar(QWidget):
 
         for key, title, icon in NAV_ITEMS:
             button = NavButton(key, title, icon, self)
-            button.clicked.connect(lambda _=False, k=key: self.navigate.emit(k))
+            button.clicked.connect(lambda _=False, k=key: self._on_pick(k))
             layout.addWidget(button)
             self.buttons[key] = button
 
         layout.addStretch(1)
 
+    # --- анимируемая подложка ---
+    def _get_pill(self) -> QRectF:
+        return self._pill
+
+    PAD = 14
+
+    def _set_pill(self, value: QRectF) -> None:
+        previous = QRectF(self._pill)
+        self._pill = value
+        # перерисовываем только полосу, которую подложка прошла
+        region = previous.united(value).adjusted(-self.PAD, -self.PAD, self.PAD, self.PAD)
+        self.update(region.toRect() if not region.isEmpty() else self.rect())
+
+    pill_rect = Property(QRectF, _get_pill, _set_pill)
+
+    def _target_rect(self, key: str) -> QRectF:
+        button = self.buttons.get(key)
+        if button is None or not button.isVisible():
+            return QRectF()
+        top_left = button.mapTo(self, QPoint(0, 0))
+        return QRectF(QPointF(top_left), QSizeF(button.size()))
+
+    def _on_pick(self, key: str) -> None:
+        sounds.play("click")
+        self.navigate.emit(key)
+
     def set_active(self, key: str) -> None:
+        self._active_key = key
         for name, button in self.buttons.items():
             button.set_active(name == key)
+        target = self._target_rect(key)
+        if target.isNull():
+            return
+        self._morph.stop()
+        if not MOTION.enabled or self._pill.isNull() or not self.isVisible():
+            # упрощённый режим: без перетекания, просто появляемся на месте
+            self._set_pill(target)
+            return
+        self._morph.setStartValue(self._pill)
+        self._morph.setEndValue(target)
+        self._morph.start()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._pill_cache = None
+        if self._active_key:
+            self._set_pill(self._target_rect(self._active_key))
+
+    def _render_pill(self, size: QSize):
+        """Стеклянная подложка рисуется один раз в картинку и переиспользуется."""
+        ratio = self.devicePixelRatioF()
+        pixmap = QPixmap(int((size.width() + 2 * self.PAD) * ratio),
+                         int((size.height() + 2 * self.PAD) * ratio))
+        pixmap.setDevicePixelRatio(ratio)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.translate(self.PAD, self.PAD)
+        paint_liquid_glass(painter, QRectF(0.0, 0.0, size.width(), size.height()), 13,
+                           tint=theme.ACCENT, strength=1.15,
+                           hover=0.0, pressed=0.0, inner_shadow=False)
+        painter.end()
+        return pixmap
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -357,6 +443,17 @@ class Sidebar(QWidget):
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         path = rounded_path(rect, 18)
         painter.fillPath(path, QColor(10, 7, 22, 132))
+
+        # стеклянная подложка активного пункта
+        if not self._pill.isNull():
+            size = QSize(int(round(self._pill.width())), int(round(self._pill.height())))
+            if self._pill_cache is None or size != self._pill_cache_size:
+                self._pill_cache = self._render_pill(size)
+                self._pill_cache_size = size
+            painter.drawPixmap(int(round(self._pill.left())) - self.PAD,
+                               int(round(self._pill.top())) - self.PAD,
+                               self._pill_cache)
+
         painter.setPen(QPen(QColor(168, 148, 255, 44), 1.0))
         painter.drawPath(path)
         painter.end()
@@ -454,9 +551,11 @@ class MainWindow(QMainWindow):
         body_layout.setSpacing(12)
 
         self.sidebar = Sidebar(body)
+        _add_soft_shadow(self.sidebar)
         body_layout.addWidget(self.sidebar)
 
         self.sheet = ContentSheet(body)
+        _add_soft_shadow(self.sheet)
         sheet_layout = QVBoxLayout(self.sheet)
         sheet_layout.setContentsMargins(8, 8, 8, 8)
         self.stack = QStackedWidget(self.sheet)
@@ -470,6 +569,10 @@ class MainWindow(QMainWindow):
 
         self.pages: dict[str, QWidget] = {}
         self._create_pages()
+        # сразу подсвечиваем пункт, который открыт при запуске,
+        # а фокус отдаём содержимому — иначе кольцо фокуса висит на пункте меню
+        self.sidebar.set_active("home")
+        self.stack.setFocus()
 
     def _create_pages(self) -> None:
         from .pages.about import AboutPage
@@ -497,6 +600,10 @@ class MainWindow(QMainWindow):
             self.controller, self, key="flags", title="Флаги",
             subtitle="Флаги стран: выбранная картинка применяется ко всем размерам флага",
             icon="shield")
+        self.pages["camos"] = CategoryPage(
+            self.controller, self, key="camos", title="Камуфляжи",
+            subtitle="Сетка камуфляжа для всех танков: замена применяется ко всем файлам рисунка",
+            icon="grid")
         self.pages["profile"] = CategoryPage(
             self.controller, self, key="profile", title="Фоны профиля",
             subtitle="Скачанные фоны профиля из кэша игры — их иконки видно в хранилище",
@@ -574,6 +681,7 @@ class MainWindow(QMainWindow):
         # Переключение без эффекта прозрачности на всю страницу: большой
         # offscreen-буфер заметно тормозил отрисовку.
         self.stack.setCurrentWidget(page)
+        self.stack.setFocus()
         self._shown(page)
 
     def _swap_to(self, page: QWidget) -> None:

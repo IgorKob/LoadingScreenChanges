@@ -11,6 +11,7 @@ import io
 from backup_manager import BackupError, BackupManager
 from dvpl import DvplError, build_dvpl, parse_dvpl
 from image_processor import ImageError, game_image_size, prepare_image_bytes
+import camo
 from resource_scanner import MapResource
 from utils import LOG, atomic_write_bytes
 
@@ -45,6 +46,11 @@ def _is_dvpl_file(path: Path) -> bool:
         return False
 
 
+def _is_dds_file(path: Path) -> bool:
+    """Текстура камуфляжа: внутри DVPL лежит DDS, а не WebP."""
+    return path.name.lower().endswith(".dds.dvpl")
+
+
 def _verify_written(path: Path, expected_size: tuple[int, int]) -> None:
     data = path.read_bytes()
     if _is_dvpl_file(path):
@@ -76,30 +82,49 @@ def apply_map(map_entry: dict,
         raise ApplyError("Пользовательское изображение не найдено. Выберите его заново.")
 
     files = resource.files
-    sizes: dict[tuple[int, int], bytes] = {}
-    file_sizes: dict[str, tuple[int, int]] = {}
+    # ключ — размер и формат: для DDS важен ещё и формат сжатия (BC1/BC3)
+    sizes: dict[tuple, bytes] = {}
+    file_keys: dict[str, tuple] = {}
+    dds_targets: set[str] = set()
     for record in files:
         target_path = Path(record["path"])
         if not target_path.is_file():
             raise ApplyError(f"Игровой файл исчез: {target_path}")
-        try:
-            size = game_image_size(target_path)
-        except ImageError as exc:
-            raise ApplyError(str(exc)) from exc
-        file_sizes[str(target_path)] = size
-        if size not in sizes:
+        if _is_dds_file(target_path):
+            info = camo.dds_info(camo.dds_payload(target_path) or b"")
+            if not info:
+                raise ApplyError(f"Не удалось прочитать текстуру камуфляжа: {target_path}")
+            key = (info["width"], info["height"], info["fourcc"])
+            dds_targets.add(str(target_path))
+        else:
             try:
-                sizes[size], _ = prepare_image_bytes(image_path, size, crop_mode, quality)
+                size = game_image_size(target_path)
             except ImageError as exc:
                 raise ApplyError(str(exc)) from exc
+            key = (size[0], size[1], b"")
+        file_keys[str(target_path)] = key
+        if key not in sizes:
+            if key[2]:
+                with camo.workdir() as folder:
+                    converted = camo.image_to_dds(Path(image_path), key[0], key[1], key[2], folder)
+                    if converted is None:
+                        raise ApplyError("Не удалось конвертировать изображение в текстуру DDS: "
+                                         "не найден texconv.exe. Переустановите программу.")
+                    sizes[key] = converted.read_bytes()
+            else:
+                try:
+                    sizes[key], _ = prepare_image_bytes(image_path, (key[0], key[1]), crop_mode, quality)
+                except ImageError as exc:
+                    raise ApplyError(str(exc)) from exc
 
     written: list[tuple[Path, bytes | None, dict | None]] = []
     result_files: list[str] = []
     try:
         for record in files:
             target_path = Path(record["path"])
-            size = file_sizes.get(str(target_path)) or game_image_size(target_path)
-            payload = sizes[size]
+            key = file_keys[str(target_path)]
+            payload = sizes[key]
+            size = (key[0], key[1])
             if _is_dvpl_file(target_path):
                 write_bytes = build_dvpl(payload)
                 # проверяем контейнер ещё до записи
@@ -135,7 +160,8 @@ def apply_map(map_entry: dict,
 
             atomic_write_bytes(target_path, write_bytes)
             written.append((target_path, original_bytes, backup_record))
-            _verify_written(target_path, size)
+            if str(target_path) not in dds_targets:
+                _verify_written(target_path, size)
             result_files.append(str(target_path))
             LOG.info("Заменён ресурс: %s", target_path)
 

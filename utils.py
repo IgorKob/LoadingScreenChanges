@@ -9,7 +9,7 @@ import time
 from pathlib import Path
 
 APP_NAME = "BlitzCustom"
-APP_VERSION = "0.4"
+APP_VERSION = "0.5"
 LOG = logging.getLogger("blitz")
 
 _data_dir_cache: Path | None = None

@@ -35,7 +35,8 @@ CATEGORY_ROOTS: dict[str, list[str]] = {
 }
 
 CATEGORY_TITLES = {"garage": "Ангар", "elements": "Элементы интерфейса",
-                   "profile": "Фоны профиля", "flags": "Флаги"}
+                   "profile": "Фоны профиля", "flags": "Флаги",
+                   "camos": "Камуфляжи"}
 
 # Фоны профиля игра скачивает в кэш обычными WebP (без DVPL).
 # Все они одного формата — 2048×1536; остальное в кэше это баннеры и товары.
@@ -232,6 +233,109 @@ def _prepare_flags(items: list[dict]) -> list[dict]:
     return result
 
 
+CAMO_ROOT = "3d/Tanks/Camouflages"
+CAMO_CATEGORY = "camos"
+
+
+def camo_base_name(filename: str) -> str:
+    """«common_01_BC.dx11.dds.dvpl» -> «common_01»."""
+    name = filename.lower()
+    for suffix in (".dvpl", ".packed.webp", ".packed", ".webp"):
+        name = name.replace(suffix, "")
+    name = name.replace(".dx11.dds", "").replace(".dds", "")
+    if name.endswith("_bc"):
+        name = name[:-3]
+    return name
+
+
+CAMO_XML = "XML/item_defs/vehicles/common/camouflages.xml.dvpl"
+CAMO_SKIN = "Gfx/UI/CamouflagesShop/Skin"
+
+
+def _norm_token(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
+
+
+def camo_icon_map(data_dir: Path) -> dict[str, str]:
+    """Камуфляж → имя картинки-иконки из camouflages.xml (тег <icon>)."""
+    path = data_dir / CAMO_XML
+    if not path.is_file():
+        return {}
+    try:
+        from dvpl import read_dvpl
+        payload, _ = read_dvpl(path)
+        text = payload.decode("utf-8", "ignore")
+    except Exception:
+        return {}
+    import re
+    mapping: dict[str, str] = {}
+    for name, _id, body in re.findall(
+            r"<([a-zA-Z0-9_\-]+)>\s*\n\s*<id>(\d+)</id>(.*?)</\1>", text, re.S):
+        icon = re.search(r"<icon>([^<]+)</icon>", body)
+        if not icon:
+            continue
+        stem = icon.group(1).replace("~res:/", "").split("/")[-1]
+        if stem.endswith(".txt"):
+            stem = stem[:-4]
+        mapping[_norm_token(name)] = stem
+    return mapping
+
+def scan_camos(data_dir: Path) -> list[dict]:
+    """Камуфляжи: карточка на имя, все варианты (основная + _BC + нации) внутри.
+
+    Размер DDS на этапе индексации не читаем: файлы сжаты LZ4, распаковывать
+    тысячу с лишним штук при каждом сканировании слишком дорого. Размер
+    определяется при применении.
+    """
+    root = data_dir / CAMO_ROOT
+    if not root.is_dir():
+        return []
+    groups: dict[str, list[dict]] = {}
+    for path in root.rglob("*.dvpl"):
+        base = camo_base_name(path.name)
+        if not base:
+            continue
+        groups.setdefault(base, []).append({
+            "path": str(path),
+            "rel": path.relative_to(data_dir).as_posix(),
+            "name": path.name,
+            "size": path.stat().st_size if path.exists() else 0,
+        })
+    icons = camo_icon_map(data_dir)
+    skin_dir = data_dir / CAMO_SKIN
+    items: list[dict] = []
+    for base, files in groups.items():
+        files.sort(key=lambda entry: entry["path"])
+        # иконка вида в списке хранилища — отдельная картинка магазина
+        icon_stem = icons.get(_norm_token(base))
+        if icon_stem and skin_dir.is_dir():
+            for suffix in ("", "@2x"):
+                icon_path = skin_dir / f"{icon_stem}{suffix}.packed.webp.dvpl"
+                if icon_path.is_file():
+                    files.append({
+                        "path": str(icon_path),
+                        "rel": icon_path.relative_to(data_dir).as_posix(),
+                        "name": icon_path.name,
+                        "size": icon_path.stat().st_size,
+                    })
+        primary = files[0]
+        items.append({
+            "id": f"camo:{base}",
+            "category": CAMO_CATEGORY,
+            "name": pretty_name(base).capitalize(),
+            "path": primary["path"],
+            "rel": primary["rel"],
+            "size": primary["size"],
+            "format": "DDS",
+            "mtime": 0,
+            "width": 0,
+            "height": 0,
+            "files": files,
+            "variants": len(files),
+        })
+    return items
+
+
 def scan_all(data_dir: str | Path) -> list[dict]:
     """Полный проход по категориям. Возвращает список ресурсов без дублей @2x."""
     directory = Path(data_dir)
@@ -241,6 +345,7 @@ def scan_all(data_dir: str | Path) -> list[dict]:
         if category == "flags":
             found = _prepare_flags(found)
         items.extend(found)
+    items.extend(scan_camos(directory))
     return group_variants(items)
 
 

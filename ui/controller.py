@@ -69,6 +69,9 @@ class Stats:
     last_operations: list[dict] = field(default_factory=list)
 
 
+INDEX_VERSION = 3
+
+
 class ThumbCache:
     """Кэш миниатюр: ограничен по количеству, чтобы не держать всё в памяти."""
 
@@ -90,6 +93,8 @@ class ThumbCache:
         return pixmap
 
     def _load(self, path: Path) -> QPixmap | None:
+        if path.name.lower().endswith(".dds.dvpl"):
+            return self._load_dds(path)
         try:
             image = load_game_image(path)
             thumb = image.copy()
@@ -100,6 +105,23 @@ class ThumbCache:
             return QPixmap.fromImage(qt_image)
         except (ImageError, OSError, ValueError) as exc:
             LOG.warning("Не удалось построить миниатюру %s: %s", path, exc)
+            return None
+
+    def _load_dds(self, path: Path) -> QPixmap | None:
+        """Камуфляж — текстура DDS: декодируем через texconv и кэшируем PNG."""
+        try:
+            from camo import thumbnail
+            png = thumbnail(path, 0, 0)
+            if png is None:
+                return None
+            image = QImage(str(png))
+            if image.isNull():
+                return None
+            scaled = image.scaled(self.size, Qt.AspectRatioMode.KeepAspectRatio,
+                                  Qt.TransformationMode.SmoothTransformation)
+            return QPixmap.fromImage(scaled)
+        except (OSError, ValueError) as exc:
+            LOG.warning("Не удалось построить миниатюру камуфляжа %s: %s", path, exc)
             return None
 
     def clear(self) -> None:
@@ -128,6 +150,9 @@ class AppController(QObject):
         self.scan: ScanResult = scan_from_settings(self.settings.get("scan") or {})
         self.images: dict[str, dict] = resource_catalog.load_index(
             self.settings.get("image_index") or {})
+        # индекс, сохранённый прошлой версией, не знает о новых категориях
+        if int(self.settings.get("image_index_version") or 0) != INDEX_VERSION:
+            self.images = {}
         self.busy_images = False
         self.thumbs = ThumbCache()
         self.pool = QThreadPool.globalInstance()
@@ -269,6 +294,7 @@ class AppController(QObject):
             self.cache_writable = True
         self.images = {item["id"]: item for item in items}
         self.settings.set("image_index", resource_catalog.index_payload(items))
+        self.settings.set("image_index_version", INDEX_VERSION)
         self.settings.save()
         LOG.info("Индекс изображений: %d ресурсов", len(items))
         self.images_scanned.emit()

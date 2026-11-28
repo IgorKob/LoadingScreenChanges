@@ -3,7 +3,7 @@
 ; правами администратора (манифест exe), поэтому ярлык ничего не требует.
 
 #define AppName "BlitzCustom"
-#define AppVersion "0.4"
+#define AppVersion "0.5"
 #define AppExe "BlitzCustom.exe"
 
 [Setup]
@@ -42,6 +42,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "dist\{#AppExe}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "tools\texconv.exe"; DestDir: "{app}\tools"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"

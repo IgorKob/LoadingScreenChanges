@@ -82,17 +82,17 @@ def header(title: str, subtitle: str = "") -> QWidget:
     widget = QWidget()
     widget.setStyleSheet("background: transparent;")
     layout = QVBoxLayout(widget)
-    layout.setContentsMargins(6, 2, 0, 2)
-    layout.setSpacing(3)
+    layout.setContentsMargins(theme.SPACE_XS + 2, 2, 0, 2)
+    layout.setSpacing(theme.SPACE_XS)
 
     label = QLabel(title)
-    label.setFont(theme.font(17, theme.QFont.Weight.DemiBold))
+    label.setFont(theme.display_font())
     label.setStyleSheet(f"color: {theme.C_TEXT};")
     layout.addWidget(label)
 
     if subtitle:
         sub = QLabel(subtitle)
-        sub.setFont(theme.font(9))
+        sub.setFont(theme.body_font())
         sub.setStyleSheet(f"color: {theme.C_TEXT_DIM};")
         sub.setWordWrap(True)
         layout.addWidget(sub)
@@ -101,7 +101,7 @@ def header(title: str, subtitle: str = "") -> QWidget:
 
 def section_label(text: str) -> QLabel:
     label = QLabel(text)
-    label.setFont(theme.font(10, theme.QFont.Weight.DemiBold))
+    label.setFont(theme.section_font())
     label.setStyleSheet(f"color: {theme.C_TEXT_DIM};")
     return label
 

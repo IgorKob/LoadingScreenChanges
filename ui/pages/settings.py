@@ -134,6 +134,11 @@ class SettingsPage(Page):
             self.anim_box.addItem(label, key)
         self.anim_box.currentIndexChanged.connect(self._save_animation)
         interface.row("Анимации", self.anim_box)
+
+        self.sounds_check = QCheckBox("Звуки интерфейса", self)
+        self.sounds_check.setFont(theme.font(9))
+        self.sounds_check.stateChanged.connect(self._save_sounds)
+        interface.row("Звуки", self.sounds_check)
         self.add(interface)
 
         # --- данные ---
@@ -195,6 +200,7 @@ class SettingsPage(Page):
             box.blockSignals(False)
         self.backup_check.blockSignals(True)
         self.backup_check.setChecked(bool(settings.get("backup_enabled", True)))
+        self.sounds_check.setChecked(bool(settings.get("sounds", True)))
         self.backup_check.blockSignals(False)
 
     def _load_animation(self) -> None:
@@ -213,6 +219,15 @@ class SettingsPage(Page):
             settings.set("quality", 90)
         settings.set("backup_enabled", self.backup_check.isChecked())
         settings.save()
+
+    def _save_sounds(self) -> None:
+        enabled = self.sounds_check.isChecked()
+        self.controller.settings.set("sounds", enabled)
+        self.controller.settings.save()
+        from ..sounds import configure as configure_sounds, play
+        configure_sounds(enabled)
+        if enabled:
+            play("toggle")
 
     def _save_animation(self) -> None:
         mode = self.anim_box.currentData() or MODE_FULL

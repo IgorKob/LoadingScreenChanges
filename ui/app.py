@@ -25,6 +25,8 @@ def run() -> int:
     app.setFont(font(9))
 
     controller = AppController()
+    from .sounds import configure as configure_sounds
+    configure_sounds(bool(controller.settings.get("sounds", True)))
     MOTION.set_mode(controller.settings.get("animations", "full"))
 
     # Штатная рамка Windows по умолчанию: безрамочный режим ломал кнопки.

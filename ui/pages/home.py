@@ -7,7 +7,7 @@ from PySide6.QtCore import QRectF, Qt, QTimer
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
-from .. import theme
+from .. import sounds, theme
 from ..animations import MOTION
 from ..widgets import (
     AccentButton,
@@ -151,6 +151,7 @@ class QuickActions(GlassPanel):
 
     # ------------------------------------------------------------------
     def set_state(self, state: str, message: str = "") -> None:
+        previous = self._state
         self._state = state
         self._status = message
         self.status.setText(message)
@@ -161,15 +162,20 @@ class QuickActions(GlassPanel):
         elif state == self.STATE_SUCCESS:
             self.apply_button.set_state(AccentButton.STATE_SUCCESS)
             self.restore_button.setEnabled(True)
+            if previous == self.STATE_BUSY:
+                sounds.play("success")
         elif state == self.STATE_ERROR:
             self.apply_button.set_state(AccentButton.STATE_ERROR, "Не удалось применить")
             self.restore_button.setEnabled(True)
+            if previous == self.STATE_BUSY:
+                sounds.play("error")
         else:
             self.apply_button.reset_state()
             self.restore_button.setEnabled(True)
         self.update()
 
     def _apply(self) -> None:
+        sounds.play("apply")
         codes = self.page.controller.assigned_codes()
         if not codes:
             self.page.window.show_toast("Сначала назначьте изображения на вкладке «Карты».", "info")

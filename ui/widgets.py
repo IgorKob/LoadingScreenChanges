@@ -58,6 +58,22 @@ def rounded_path(rect: QRectF, radius: float) -> QPainterPath:
     return path
 
 
+def draw_focus_ring(painter: QPainter, rect: QRectF, radius: float) -> None:
+    """Кольцо фокуса клавиатуры: тёмная подложка плюс светлый контур.
+
+    Нужен, чтобы элементом можно было пользоваться с клавиатуры и было видно,
+    где находится фокус (требование WCAG 2.2 AA, пункт 2.4.7).
+    """
+    ring = rect.adjusted(1.4, 1.4, -1.4, -1.4)
+    painter.save()
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(QColor(10, 6, 22, 200), 3.2))
+    painter.drawRoundedRect(ring, max(radius - 1.4, 2), max(radius - 1.4, 2))
+    painter.setPen(QPen(theme.FOCUS_RING, 1.5))
+    painter.drawRoundedRect(ring, max(radius - 1.4, 2), max(radius - 1.4, 2))
+    painter.restore()
+
+
 def _lerp(a: QColor, b: QColor, t: float) -> QColor:
     t = max(0.0, min(1.0, t))
     return QColor(
@@ -375,6 +391,16 @@ class GlassPanel(QWidget):
         pearl.setColorAt(1.0, QColor(255, 255, 255, 0))
         painter.fillPath(path, QBrush(pearl))
 
+        # перламутр (iridescence): едва заметный розово-голубо-золотой перелив
+        iridescent = QLinearGradient(rect.topLeft(), rect.bottomRight())
+        for position, source in ((0.0, theme.IRIDESCENT_A),
+                                 (0.52, theme.IRIDESCENT_B),
+                                 (1.0, theme.IRIDESCENT_C)):
+            color = QColor(source)
+            color.setAlpha(theme.IRIDESCENT_ALPHA)
+            iridescent.setColorAt(position, color)
+        painter.fillPath(path, QBrush(iridescent))
+
         painter.save()
         painter.setClipPath(path)
         # блик по верхней кромке — «толщина стекла»
@@ -405,12 +431,103 @@ class GlassPanel(QWidget):
         border = _lerp(self._border, theme.PANEL_BORDER_ACTIVE, self._hover_t)
         if self._active:
             border = _lerp(border, theme.PANEL_BORDER_ACTIVE, 0.8)
-        frame = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        frame.setColorAt(0.0, _with_alpha(border, min(255, border.alpha() + 40)))
-        frame.setColorAt(1.0, _with_alpha(border, max(0, border.alpha() - 14)))
+        # рамка с градиентом: сверху ярче, снизу почти прозрачная — «грань стекла»
+        frame = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        frame.setColorAt(0.0, _with_alpha(border, min(255, border.alpha() + 62)))
+        frame.setColorAt(0.55, _with_alpha(border, max(18, border.alpha() // 2)))
+        frame.setColorAt(1.0, _with_alpha(border, theme.BORDER_BOTTOM_ALPHA))
         painter.setPen(QPen(QBrush(frame), 1.0))
         painter.drawPath(path)
         painter.end()
+
+
+def paint_liquid_glass(painter: QPainter, rect: QRectF, radius: float, *,
+                       tint: QColor | None = None, strength: float = 1.0,
+                       hover: float = 0.0, pressed: float = 0.0,
+                       inner_shadow: bool = True) -> None:
+    """Стеклянная кнопка: прозрачный центр, преломление света по кромке.
+
+    Центр остаётся почти прозрачным — сквозь него видно фон, поэтому кнопка
+    выглядит как линза. Плотность растёт к краям (radial), по кромке идёт
+    градиентная подсветка, сверху — блик, снизу — внутренняя тень. Красная и
+    голубая дуги в 1 px имитируют хроматическую аберрацию стекла.
+    """
+    tint = tint or theme.ACCENT
+    rect = QRectF(rect)
+    path = rounded_path(rect, radius)
+
+    core = 0.55 + 0.45 * hover + 0.15 * pressed
+    # 0. мягкое свечение вокруг — кнопка «парит» и читается как акцент
+    halo = QColor(tint)
+    halo.setAlpha(int(38 * strength * core))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(halo, 7.0))
+    painter.drawPath(path)
+
+    # 1. основа: прозрачное стекло, у краёв плотнее и цветнее
+    lens = QRadialGradient(rect.center(), max(rect.width(), rect.height()) * 0.62)
+    lens.setColorAt(0.0, QColor(tint.red(), tint.green(), tint.blue(), int(20 * strength)))
+    lens.setColorAt(0.5, QColor(tint.red(), tint.green(), tint.blue(), int(46 * strength * core)))
+    lens.setColorAt(1.0, QColor(tint.red(), tint.green(), tint.blue(), int(126 * strength * core)))
+    painter.fillPath(path, QBrush(lens))
+
+    painter.save()
+    painter.setClipPath(path)
+
+    # 2. блик сверху — «глянец» на верхней грани
+    specular = QLinearGradient(rect.topLeft(), rect.topRight())
+    specular.setColorAt(0.0, QColor(255, 255, 255, 0))
+    specular.setColorAt(0.18, QColor(255, 255, 255, int(120 + 40 * hover)))
+    specular.setColorAt(0.5, QColor(255, 255, 255, int(150 + 40 * hover)))
+    specular.setColorAt(0.82, QColor(255, 255, 255, int(120 + 40 * hover)))
+    specular.setColorAt(1.0, QColor(255, 255, 255, 0))
+    painter.setPen(QPen(QBrush(specular), 2.0))
+    painter.drawLine(QPointF(rect.left() + 8, rect.top() + 1.4),
+                     QPointF(rect.right() - 8, rect.top() + 1.4))
+
+    # 3. нижняя внутренняя тень — толщина стекла
+    if inner_shadow:
+        depth = min(14.0, rect.height() * 0.42)
+        shade = QLinearGradient(rect.bottomLeft(), rect.bottomLeft() - QPoint(0, int(depth)))
+        shade.setColorAt(0.0, QColor(6, 3, 18, int(86 * strength)))
+        shade.setColorAt(1.0, QColor(6, 3, 18, 0))
+        painter.fillRect(QRectF(rect.x(), rect.bottom() - depth, rect.width(), depth), shade)
+
+    # 4. хроматическая аберрация: красный и голубой контуры чуть в стороны
+    chroma = QPainterPath()
+    chroma.addRoundedRect(rect.adjusted(1.0, 1.0, -1.0, -1.0), radius - 1, radius - 1)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(QColor(255, 96, 140, 42), 1.0))
+    painter.drawPath(chroma.translated(-0.8, 0.0))
+    painter.setPen(QPen(QColor(96, 208, 255, 42), 1.0))
+    painter.drawPath(chroma.translated(0.8, 0.0))
+    painter.restore()
+
+    # 5. кромка-преломление: сверху белая, снизу цветная
+    rim = QLinearGradient(rect.topLeft(), rect.bottomRight())
+    rim.setColorAt(0.0, QColor(255, 255, 255, int(224 + 24 * hover)))
+    rim.setColorAt(0.30, QColor(255, 255, 255, 76))
+    rim.setColorAt(0.68, QColor(tint.lighter(135).red(), tint.lighter(135).green(),
+                               tint.lighter(135).blue(), int(150 + 40 * hover)))
+    rim.setColorAt(1.0, QColor(255, 255, 255, int(176 + 40 * hover)))
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    painter.setPen(QPen(QBrush(rim), 1.6))
+    painter.drawPath(path)
+
+    # 6. тонкий внутренний контур для чёткости границы
+    inner = QPainterPath()
+    inset = rect.adjusted(2.0, 2.0, -2.0, -2.0)
+    inner.addRoundedRect(inset, max(radius - 2, 4), max(radius - 2, 4))
+    painter.setPen(QPen(QColor(255, 255, 255, int(38 + 26 * hover)), 1.0))
+    painter.drawPath(inner)
+
+
+def draw_text_with_shadow(painter: QPainter, rect: QRectF, text: str, color: QColor) -> None:
+    """Текст на стекле с мягкой тенью — чтобы не терялся на пёстром фоне."""
+    painter.setPen(QColor(6, 3, 18, 150))
+    painter.drawText(rect.translated(0, 1), int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), text)
+    painter.setPen(color)
+    painter.drawText(rect, int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), text)
 
 
 # --------------------------------------------------------------------------
@@ -430,6 +547,7 @@ class IconButton(QAbstractButton):
         self._hover_t = 0.0
         self.setFixedSize(size, size)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         if tooltip:
             self.setToolTip(tooltip)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
@@ -465,6 +583,8 @@ class IconButton(QAbstractButton):
             color = theme.ACCENT_LIGHT
         margin = self._size * 0.28
         draw_icon(painter, self.kind, QRectF(rect).adjusted(margin, margin, -margin, -margin), color, 1.5)
+        if self.hasFocus():
+            draw_focus_ring(painter, rect, self._size / 2)
         painter.end()
 
 
@@ -479,6 +599,7 @@ class GhostButton(QAbstractButton):
         self._hover_t = 0.0
         self.setMinimumHeight(height)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         fm = QFontMetrics(theme.font(10, QFont.Weight.Medium))
         need = fm.horizontalAdvance(text) + (34 if icon else 26) + 24
@@ -505,12 +626,12 @@ class GhostButton(QAbstractButton):
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        if not self.isEnabled():
+            painter.setOpacity(0.45)
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
-        path = rounded_path(rect, theme.RADIUS_BUTTON)
-        fill = _lerp(QColor(255, 255, 255, 10), QColor(255, 255, 255, 26), self._hover_t)
-        painter.fillPath(path, fill)
-        painter.setPen(QPen(_lerp(theme.PANEL_BORDER, theme.PANEL_BORDER_ACTIVE, self._hover_t), 1.0))
-        painter.drawPath(path)
+        paint_liquid_glass(painter, rect, theme.RADIUS_BUTTON,
+                           tint=_lerp(theme.BLUE, theme.ACCENT_LIGHT, self._hover_t),
+                           strength=0.72, hover=self._hover_t, pressed=0.0)
 
         font = theme.font(10, QFont.Weight.Medium)
         painter.setFont(font)
@@ -528,6 +649,8 @@ class GhostButton(QAbstractButton):
             start_x += icon_w + gap
         painter.drawText(QRectF(start_x, rect.top(), text_w, rect.height()),
                          int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), self.text())
+        if self.hasFocus():
+            draw_focus_ring(painter, rect, theme.RADIUS_BUTTON)
         painter.end()
 
 
@@ -620,36 +743,20 @@ class AccentButton(QAbstractButton):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         if self._press_t:
-            rect = rect.adjusted(1, 1, -1, -1)
-        path = rounded_path(rect, theme.RADIUS_BUTTON)
+            rect = rect.adjusted(1.5, 1.5, -1.5, -1.5)
 
         if self.state == self.STATE_SUCCESS:
-            c1, c2 = QColor("#14B8A6"), QColor("#2DD4BF")
+            tint = QColor("#2DD4BF")
         elif self.state == self.STATE_ERROR:
-            c1, c2 = QColor("#B45309"), QColor("#F59E0B")
+            tint = QColor("#F59E0B")
         elif self.state == self.STATE_BUSY:
-            c1, c2 = QColor("#6D28D9"), QColor("#8B5CF6")
+            tint = QColor("#8B5CF6")
         else:
-            c1 = _lerp(QColor("#6D28D9"), QColor("#7C3AED"), self._hover_t)
-            c2 = _lerp(QColor("#8B5CF6"), QColor("#A78BFA"), self._hover_t)
+            tint = _lerp(theme.ACCENT, theme.ACCENT_LIGHT, self._hover_t)
 
-        if not self.isEnabled():
-            c1, c2 = QColor(90, 84, 120, 120), QColor(110, 102, 145, 120)
-
-        grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-        grad.setColorAt(0.0, c1)
-        grad.setColorAt(1.0, c2)
-        painter.fillPath(path, QBrush(grad))
-
-        # внутренний блик
-        glow = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        glow.setColorAt(0.0, QColor(255, 255, 255, 52))
-        glow.setColorAt(0.5, QColor(255, 255, 255, 8))
-        glow.setColorAt(1.0, QColor(255, 255, 255, 0))
-        painter.fillPath(path, QBrush(glow))
-
-        painter.setPen(QPen(QColor(255, 255, 255, 60 + int(60 * self._hover_t)), 1.0))
-        painter.drawPath(path)
+        paint_liquid_glass(painter, rect, theme.RADIUS_BUTTON, tint=tint,
+                           strength=1.35 if self.isEnabled() else 0.3,
+                           hover=self._hover_t, pressed=self._press_t)
 
         font = theme.font(10, QFont.Weight.DemiBold, 0.2)
         painter.setFont(font)
@@ -682,8 +789,10 @@ class AccentButton(QAbstractButton):
             draw_icon(painter, kind, QRectF(x, cy - 8, 16, 16), QColor("#FFFFFF"), 1.8)
             x += icon_w + gap
 
-        painter.drawText(QRectF(x, rect.top(), text_w + 2, rect.height()),
-                         int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), label)
+        draw_text_with_shadow(painter, QRectF(x, rect.top(), text_w + 2, rect.height()),
+                              label, QColor("#FFFFFF") if self.isEnabled() else QColor("#CFC9E8"))
+        if self.hasFocus():
+            draw_focus_ring(painter, rect, theme.RADIUS_BUTTON)
         painter.end()
 
 
@@ -699,6 +808,7 @@ class NavButton(QAbstractButton):
         self._hover_t = 0.0
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setFixedHeight(46)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
 
@@ -729,14 +839,9 @@ class NavButton(QAbstractButton):
         rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         path = rounded_path(rect, 13)
 
-        if self._active:
-            grad = QLinearGradient(rect.topLeft(), rect.bottomRight())
-            grad.setColorAt(0.0, QColor(139, 92, 246, 110))
-            grad.setColorAt(1.0, QColor(96, 165, 250, 60))
-            painter.fillPath(path, QBrush(grad))
-            painter.setPen(QPen(QColor(167, 139, 250, 150), 1.0))
-            painter.drawPath(path)
-        elif self._hover_t > 0.01:
+        # активную подложку рисует сама панель навигации — она перетекает
+        # между пунктами, поэтому кнопка в активном состоянии заливку не делает
+        if not self._active and self._hover_t > 0.01:
             painter.fillPath(path, _with_alpha(QColor(255, 255, 255, 22), int(60 * self._hover_t)))
             painter.setPen(QPen(_with_alpha(theme.PANEL_BORDER, int(90 * self._hover_t)), 1.0))
             painter.drawPath(path)
@@ -750,6 +855,8 @@ class NavButton(QAbstractButton):
         painter.setPen(theme.TEXT if self._active else _lerp(theme.TEXT_DIM, theme.TEXT, self._hover_t))
         painter.drawText(QRectF(rect.x() + 45, rect.top(), rect.width() - 55, rect.height()),
                          int(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft), self.text())
+        if self.hasFocus():
+            draw_focus_ring(painter, rect, 13)
         painter.end()
 
 
